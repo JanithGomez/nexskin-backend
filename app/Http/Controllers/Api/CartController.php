@@ -13,72 +13,97 @@ class CartController extends Controller
 {
     private function getSessionId(Request $request): string
     {
-        // Ensure session exists
         if (! $request->hasSession()) {
             $request->setLaravelSession(app('session')->driver());
         }
-        $request->session()->start();
 
+        $request->session()->start();
         return $request->session()->getId();
     }
 
     private function getOrCreateCart(Request $request): Cart
     {
-        $userId = Auth::id();
+        // $userId = Auth::guard('sanctum')->id() ?? Auth::id();
+        // $userId = $request->user()?->id; // ✅ token user (Bearer)
+        $userId = $request->user('sanctum')?->id;
+
         $sessionId = $this->getSessionId($request);
 
-        // If logged in, prefer user cart; else session cart
+        $sessionCart = Cart::firstOrCreate(
+            ['session_id' => $sessionId, 'user_id' => null],
+            []
+        );
+
         if ($userId) {
-            $cart = Cart::firstOrCreate(
+            $userCart = Cart::firstOrCreate(
                 ['user_id' => $userId],
                 ['session_id' => $sessionId]
             );
 
-            // keep session_id updated
-            if (! $cart->session_id) {
-                $cart->session_id = $sessionId;
-                $cart->save();
+            if (! $userCart->session_id) {
+                $userCart->session_id = $sessionId;
+                $userCart->save();
             }
 
-            return $cart;
+            if ($sessionCart->id !== $userCart->id && $sessionCart->items()->count()) {
+                $sessionCart->load('items');
+
+                foreach ($sessionCart->items as $si) {
+                    $existing = CartItem::where('cart_id', $userCart->id)
+                        ->where('product_id', $si->product_id)
+                        ->first();
+
+                    if ($existing) {
+                        $existing->quantity += $si->quantity;
+                        $existing->save();
+                    } else {
+                        CartItem::create([
+                            'cart_id' => $userCart->id,
+                            'product_id' => $si->product_id,
+                            'quantity' => $si->quantity,
+                            'price' => $si->price,
+                        ]);
+                    }
+                }
+
+                $sessionCart->delete();
+            }
+
+            return $userCart;
         }
 
-        return Cart::firstOrCreate(
-            ['session_id' => $sessionId],
-            ['user_id' => null]
-        );
+        return $sessionCart;
     }
 
     private function cartResponse(Cart $cart)
     {
         $cart->load(['items.product.primaryImage', 'items.product.images']);
 
-        $items = $cart->items->map(function ($ci) {
-            $p = $ci->product;
+        $items = $cart->items
+            ->filter(fn ($ci) => $ci->product) // ✅ avoid null product
+            ->map(function ($ci) {
+                $p = $ci->product;
 
-            // match your Next UI shape:
-            // id = product id (so links work), plus item_id for updating/deleting
-            return [
-                'item_id' => $ci->id,                 // cart_items.id
-                'id' => $p->id,                       // product_id
-                'title' => $p->name,
-                'price' => (float) $ci->price,        // stored price
-                'quantity' => (int) $ci->quantity,
+                $primaryPublicId = $p?->primaryImage?->image_url;
 
-                // these must exist in your product api already
-                'imgSrc' => $p->primaryImage
-                    ? \CloudinaryLabs\CloudinaryLaravel\Facades\Cloudinary::getUrl($p->primaryImage->image_url, [
-                        'secure' => true,
-                        'quality' => 'auto',
-                        'fetch_format' => 'auto',
-                        'width' => 720,
-                        'crop' => 'scale',
-                    ])
-                    : asset('images/placeholder.png'),
-            ];
-        })->values();
+                $hoverPublicId = $p?->images
+                    ? $p->images->where('id', '!=', optional($p->primaryImage)->id)->first()?->image_url
+                    : null;
 
-        $subtotal = $items->reduce(fn ($sum, $i) => $sum + ($i['price'] * $i['quantity']), 0);
+                return [
+                    'item_id' => $ci->id,
+                    'id' => $p->id,
+                    'title' => $p->name,
+                    'price' => (float) $ci->price,
+                    'quantity' => (int) $ci->quantity,
+                    'imgPublicId' => $primaryPublicId,
+                    'hoverPublicId' => $hoverPublicId,
+                ];
+            })
+            ->values()
+            ->all();
+
+        $subtotal = collect($items)->reduce(fn ($sum, $i) => $sum + ($i['price'] * $i['quantity']), 0);
 
         return response()->json([
             'items' => $items,
@@ -86,15 +111,12 @@ class CartController extends Controller
         ]);
     }
 
-    // ✅ GET /api/cart
     public function show(Request $request)
     {
         $cart = $this->getOrCreateCart($request);
-
         return $this->cartResponse($cart);
     }
 
-    // ✅ POST /api/cart/items
     public function addItem(Request $request)
     {
         $data = $request->validate([
@@ -103,7 +125,6 @@ class CartController extends Controller
         ]);
 
         $qty = (int) ($data['quantity'] ?? 1);
-
         $cart = $this->getOrCreateCart($request);
 
         $product = Product::where('is_active', true)->findOrFail($data['product_id']);
@@ -120,14 +141,14 @@ class CartController extends Controller
                 'cart_id' => $cart->id,
                 'product_id' => $product->id,
                 'quantity' => $qty,
-                'price' => $product->price, // snapshot price
+                'price' => $product->price,
             ]);
         }
 
+        $cart->refresh();
         return $this->cartResponse($cart);
     }
 
-    // ✅ PATCH /api/cart/items/{itemId}
     public function updateItem(Request $request, int $itemId)
     {
         $data = $request->validate([
@@ -140,10 +161,10 @@ class CartController extends Controller
         $item->quantity = (int) $data['quantity'];
         $item->save();
 
+        $cart->refresh();
         return $this->cartResponse($cart);
     }
 
-    // ✅ DELETE /api/cart/items/{itemId}
     public function removeItem(Request $request, int $itemId)
     {
         $cart = $this->getOrCreateCart($request);
@@ -151,6 +172,16 @@ class CartController extends Controller
         $item = CartItem::where('cart_id', $cart->id)->findOrFail($itemId);
         $item->delete();
 
+        $cart->refresh();
+        return $this->cartResponse($cart);
+    }
+
+    public function clear(Request $request)
+    {
+        $cart = $this->getOrCreateCart($request);
+        $cart->items()->delete();
+
+        $cart->refresh();
         return $this->cartResponse($cart);
     }
 }

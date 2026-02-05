@@ -394,13 +394,17 @@ class ProductController extends Controller
             return response()->json(['data' => []]);
         }
 
-        $cacheKey = 'products:byids:' . md5($ids->implode(','));
+        // ✅ include the global products index version, so this cache invalidates automatically
+        $ver = $this->productsIndexVersion();
+
+        $cacheKey = 'products:byids:v' . $ver . ':' . md5($ids->implode(','));
 
         $data = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($ids) {
             $products = Product::with(['images', 'primaryImage'])
                 ->where('is_active', true)
                 ->whereIn('id', $ids)
                 ->get()
+                // keep same order as ids
                 ->sortBy(fn ($p) => $ids->search($p->id))
                 ->values()
                 ->map(function ($product) {

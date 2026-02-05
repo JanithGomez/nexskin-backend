@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\ProductType;
 use App\Models\SkinType;
 use App\Models\TargetGroup;
+use App\Models\Review;
 
 use App\Observers\BrandObserver;
 use App\Observers\CategoryObserver;
@@ -16,6 +17,7 @@ use App\Observers\ProductObserver;
 use App\Observers\ProductTypeObserver;
 use App\Observers\SkinTypeObserver;
 use App\Observers\TargetGroupObserver;
+use App\Observers\ReviewObserver;
 
 
 class AppServiceProvider extends ServiceProvider
@@ -41,5 +43,6 @@ class AppServiceProvider extends ServiceProvider
         ProductType::observe(ProductTypeObserver::class);
         SkinType::observe(SkinTypeObserver::class);
         TargetGroup::observe(TargetGroupObserver::class);
+        Review::observe(ReviewObserver::class);
     }
 }

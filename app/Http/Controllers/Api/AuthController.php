@@ -14,27 +14,23 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:6', 'confirmed'], // needs password_confirmation
+            'name' => ['required','string','max:255'],
+            'email' => ['required','email','max:255','unique:users,email'],
+            'password' => ['required','string','min:6','confirmed'],
         ]);
 
         $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
-            'role' => 'customer', // or staff, up to you
+            'role' => 'customer',
         ]);
 
+        // ✅ create token
         $token = $user->createToken('web')->plainTextToken;
 
         return response()->json([
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role' => $user->role,
-            ],
+            'user' => $user,
             'token' => $token,
         ], 201);
     }
@@ -43,8 +39,8 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $data = $request->validate([
-            'email' => ['required', 'email'],
-            'password' => ['required', 'string'],
+            'email' => ['required','email'],
+            'password' => ['required','string'],
         ]);
 
         $user = User::where('email', $data['email'])->first();
@@ -55,23 +51,18 @@ class AuthController extends Controller
             ]);
         }
 
-        // optional: revoke old tokens to avoid many tokens
+        // optional: clear old tokens
         $user->tokens()->delete();
 
         $token = $user->createToken('web')->plainTextToken;
 
         return response()->json([
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role' => $user->role,
-            ],
+            'user' => $user,
             'token' => $token,
         ]);
     }
 
-    // GET /api/auth/me
+    // GET /api/auth/me  (protected by auth:sanctum)
     public function me(Request $request)
     {
         return response()->json([
@@ -79,12 +70,10 @@ class AuthController extends Controller
         ]);
     }
 
-    // POST /api/auth/logout
+    // POST /api/auth/logout (protected by auth:sanctum)
     public function logout(Request $request)
     {
-        // delete current token only
         $request->user()?->currentAccessToken()?->delete();
-
         return response()->json(['message' => 'Logged out']);
     }
 }
