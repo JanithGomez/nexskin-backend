@@ -25,10 +25,12 @@ Route::get('/product-filters', [ProductController::class, 'filters']);
 Route::get('/products/by-ids', [ProductController::class, 'byIds']);
 Route::get('/products/{id}', [ProductController::class, 'show']);
 Route::get('/products/related/{id}', [ProductController::class, 'related']);
+Route::get('/products/best-sellers', [ProductController::class, 'bestSellers']);
 
 Route::post('/products/{product}/reviews', [ReviewController::class, 'store'])
     ->whereNumber('product')
     ->middleware('throttle:5,1');
+
 
 /* =========================
    NAVBAR

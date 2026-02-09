@@ -480,4 +480,36 @@ class ProductController extends Controller
 
         return response()->json($data);
     }
+
+    public function bestSellers(Request $request)
+    {
+        $limit = max(1, min((int) $request->get('limit', 4), 12));
+
+        // If you have order_items table, use it. Otherwise fallback to latest products.
+        $items = \App\Models\Product::with(['primaryImage','images'])
+            ->where('is_active', true)
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get()
+            ->map(function ($product) {
+                $primary = $product->primaryImage?->image_url;
+                $hover = $product->images
+                    ->where('id', '!=', optional($product->primaryImage)->id)
+                    ->first()?->image_url;
+
+                return [
+                    'id' => $product->id,
+                    'title' => $product->name,
+                    'price' => (float) $product->price,
+                    'soldOut' => $product->stock <= 0,
+                    'imgPublicId' => $primary,
+                    'hoverPublicId' => $hover,
+                ];
+            })
+            ->values()
+            ->all();
+
+        return response()->json(['data' => $items]);
+    }
+
 }
