@@ -3,8 +3,10 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\AddressController;
 use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\MenuController;
+use App\Http\Controllers\Api\CheckoutController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -31,6 +33,11 @@ Route::post('/products/{product}/reviews', [ReviewController::class, 'store'])
     ->whereNumber('product')
     ->middleware('throttle:5,1');
 
+Route::middleware('auth:sanctum')->prefix('saved-addresses')->group(function () {
+    Route::get('/', [AddressController::class, 'index']);
+    Route::post('/', [AddressController::class, 'store']);
+    Route::delete('/{id}', [AddressController::class, 'destroy']);
+});
 
 /* =========================
    NAVBAR
@@ -50,6 +57,8 @@ Route::middleware(['cart'])->group(function () {
     Route::patch('/cart/items/{itemId}', [CartController::class, 'updateItem']);
     Route::delete('/cart/items/{itemId}', [CartController::class, 'removeItem']);
     Route::delete('/cart', [CartController::class, 'clear']);
+    
+    Route::post('/checkout', [CheckoutController::class, 'placeOrder']);
 });
 
 /* =========================

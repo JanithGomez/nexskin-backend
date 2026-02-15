@@ -13,12 +13,10 @@ class Order extends Model
     protected $fillable = [
         'user_id',
         'order_number',
-        'guest_name',
-        'guest_email',
-        'guest_phone',
         'status',
         'payment_status',
         'total_amount',
+        'admin_notes',
     ];
 
     public function user()
@@ -44,6 +42,11 @@ class Order extends Model
     public function addresses()
     {
         return $this->hasMany(Address::class);
+    }
+
+    public function statusHistories()
+    {
+        return $this->hasMany(OrderStatusHistory::class, 'order_id');
     }
 
     protected static function booted()
