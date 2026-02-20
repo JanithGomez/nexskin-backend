@@ -30,59 +30,65 @@
                             };
 
                             // ------------------------------
-                            // Badge colors by type + status
-                            // (fallback to neutral)
+                            // Badge colors by status
                             // ------------------------------
                             $statusKey = strtolower((string) ($newValue ?? ''));
 
                             $palette = [
                                 // order statuses
-                                'pending'    => ['bg' => '#FEF3C7', 'text' => '#92400E'], // amber
-                                'processing' => ['bg' => '#DBEAFE', 'text' => '#1E40AF'], // blue
-                                'shipped'    => ['bg' => '#E0E7FF', 'text' => '#3730A3'], // indigo
-                                'delivered'  => ['bg' => '#D1FAE5', 'text' => '#065F46'], // green
-                                'cancelled'  => ['bg' => '#FEE2E2', 'text' => '#991B1B'], // red
+                                'pending'    => ['bg' => '#FEF3C7', 'text' => '#92400E'],
+                                'processing' => ['bg' => '#DBEAFE', 'text' => '#1E40AF'],
+                                'shipped'    => ['bg' => '#E0E7FF', 'text' => '#3730A3'],
+                                'delivered'  => ['bg' => '#D1FAE5', 'text' => '#065F46'],
+                                'cancelled'  => ['bg' => '#FEE2E2', 'text' => '#991B1B'],
 
                                 // payment statuses
                                 'unpaid'    => ['bg' => '#FEE2E2', 'text' => '#991B1B'],
+                                'pending'   => ['bg' => '#FEF3C7', 'text' => '#92400E'],
                                 'paid'      => ['bg' => '#D1FAE5', 'text' => '#065F46'],
                                 'refunded'  => ['bg' => '#FEF3C7', 'text' => '#92400E'],
                                 'failed'    => ['bg' => '#FEE2E2', 'text' => '#991B1B'],
 
-                                // shipment statuses (your custom ones)
+                                // shipment statuses
                                 'tracking_created' => ['bg' => '#DBEAFE', 'text' => '#1E40AF'],
                                 'picked_up'        => ['bg' => '#FEF3C7', 'text' => '#92400E'],
                                 'in_transit'       => ['bg' => '#E0E7FF', 'text' => '#3730A3'],
                                 'out_for_delivery' => ['bg' => '#FEF3C7', 'text' => '#92400E'],
                                 'delivered'        => ['bg' => '#D1FAE5', 'text' => '#065F46'],
+                                'delivery_failed'  => ['bg' => '#FEE2E2', 'text' => '#991B1B'],
                             ];
 
                             $badgeBg = $palette[$statusKey]['bg'] ?? '#F3F4F6';
                             $badgeText = $palette[$statusKey]['text'] ?? '#374151';
 
                             // ------------------------------
-                            // Try to extract tracking details
-                            // (we put "Carrier: X. Tracking: Y." into the note in service)
+                            // Flags
                             // ------------------------------
-                            $carrier = null;
-                            $tracking = null;
+                            $newLower = strtolower((string) ($newValue ?? ''));
+                            $isPlaced = (($type ?? null) === 'order_status') && ($newLower === 'placed');
+                            $isDeliveryFailed = (($type ?? null) === 'shipment_status') && ($newLower === 'delivery_failed');
 
-                            if (($type ?? null) === 'shipment_status') {
-                                // best source: shipment relation if loaded
-                                $carrier = $order->shipment->carrier ?? null;
-                                $tracking = $order->shipment->tracking_number ?? null;
+                            // ------------------------------
+                            // ✅ ALWAYS load tracking details (any email type)
+                            // ------------------------------
+                            $carrier = $order->shipment->carrier ?? null;
+                            $tracking = $order->shipment->tracking_number ?? null;
 
-                                // fallback: parse note (if relation isn't loaded)
-                                if ((!$carrier || !$tracking) && !empty($note)) {
-                                    if (preg_match('/Carrier:\s*([^\.]+)\./i', $note, $m)) $carrier = $carrier ?: trim($m[1]);
-                                    if (preg_match('/Tracking:\s*([^\.]+)\./i', $note, $m)) $tracking = $tracking ?: trim($m[1]);
-                                }
+                            // ------------------------------
+                            // ✅ attempt number comes from shipment table (NOT from note)
+                            // ------------------------------
+                            $attemptNo = null;
+                            if ($isDeliveryFailed) {
+                                $attemptNo = (int) ($order->shipment->delivery_attempts ?? 0);
+                                if ($attemptNo <= 0) $attemptNo = null;
                             }
 
                             $prettyOld = $oldValue ? strtoupper($oldValue) : null;
                             $prettyNew = strtoupper((string) $newValue);
 
-                            // Nice title line
+                            // ------------------------------
+                            // Headline
+                            // ------------------------------
                             $headline = $label . ' updated';
                             if (($type ?? null) === 'shipment_status') {
                                 $headline = 'Shipment update';
@@ -90,15 +96,24 @@
                         @endphp
 
                         <h2 style="margin:0 0 10px;font-size:20px;color:#111827;">
-                            {{ $headline }}
+                            @if($isPlaced)
+                                Order placed 🎉
+                            @else
+                                {{ $headline }}
+                            @endif
                         </h2>
 
                         <p style="margin:0 0 16px;color:#374151;line-height:1.5;">
-                            Your order <strong>{{ $order->order_number }}</strong> has been updated.
+                            @if($isPlaced)
+                                Thanks! We received your order <strong>{{ $order->order_number }}</strong>.
+                                We’ll start preparing it and keep you updated.
+                            @else
+                                Your order <strong>{{ $order->order_number }}</strong> has been updated.
+                            @endif
                         </p>
 
-                        {{-- Shipment tracking info (only when available) --}}
-                        @if(($type ?? null) === 'shipment_status' && ($carrier || $tracking))
+                        {{-- ✅ Show tracking box on ANY email if tracking exists --}}
+                        @if($carrier || $tracking)
                             <div style="padding:12px 14px;border:1px dashed #c7d2fe;border-radius:10px;background:#eef2ff;margin-bottom:14px;">
                                 <div style="font-size:13px;color:#111827;font-weight:700;margin-bottom:6px;">Tracking details</div>
                                 <div style="font-size:13px;color:#374151;line-height:1.5;">
@@ -107,6 +122,25 @@
                                     @endif
                                     @if($tracking)
                                         <div><span style="color:#6b7280;">Tracking #:</span> <strong>{{ $tracking }}</strong></div>
+                                    @endif
+                                </div>
+                            </div>
+                        @endif
+
+                        {{-- Delivery attempt banner (only when delivery_failed) --}}
+                        @if($isDeliveryFailed)
+                            <div style="padding:12px 14px;border:1px solid #fecaca;border-radius:10px;background:#fff1f2;margin-bottom:14px;">
+                                <div style="font-size:13px;color:#991b1b;font-weight:700;margin-bottom:6px;">
+                                    Delivery attempt failed
+                                    @if($attemptNo)
+                                        (Attempt #{{ $attemptNo }})
+                                    @endif
+                                </div>
+
+                                <div style="font-size:13px;color:#374151;line-height:1.6;">
+                                    We couldn’t complete the delivery this time. Don’t worry — our courier will try again soon.
+                                    @if($attemptNo && $attemptNo >= 2)
+                                        If you want to help, please double-check your phone number and address details.
                                     @endif
                                 </div>
                             </div>
@@ -130,7 +164,7 @@
                             </div>
                         </div>
 
-                        {{-- Optional note --}}
+                        {{-- Manual note ALWAYS shows --}}
                         @if(!empty($note))
                             <div style="margin-top:14px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:10px;background:#fafafa;">
                                 <div style="font-size:13px;color:#111827;font-weight:700;margin-bottom:6px;">Note</div>

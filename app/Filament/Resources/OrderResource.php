@@ -3,16 +3,13 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\OrderResource\Pages;
-use App\Mail\OrderUpdateMail;
 use App\Models\Order;
-use App\Models\OrderStatusHistory;
 use Filament\Forms;
-use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
+use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Mail;
 
 class OrderResource extends Resource
 {
@@ -22,20 +19,27 @@ class OrderResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-receipt-refund';
 
     /**
-     * ✅ Eager load to avoid N+1 and improve performance
+     * ✅ FAST QUERY for INDEX table:
+     * - Keep relations minimal
+     * - Use withCount / withSum instead of loading items
      */
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
+            ->select('orders.*')
             ->with([
-                'user',
-                'addresses',
-                'items.product',
-                'statusHistories.changer',
-            ]);
+                'user:id,name,email',
+                'shipment:id,order_id,tracking_number,delivery_attempts,status,carrier',
+                'payment:id,order_id,payment_method',
+                // NOTE: we do NOT load addresses/items/statusHistories here (heavy)
+            ])
+            ->withCount([
+                'items as products_count', // number of order_items rows
+            ])
+            ->withSum('items as items_qty_sum', 'quantity'); // total qty
     }
 
-    public static function table(Tables\Table $table): Tables\Table
+    public static function table(Table $table): Table
     {
         return $table
             ->columns([
@@ -50,23 +54,25 @@ class OrderResource extends Resource
                     ->label('Customer')
                     ->icon('heroicon-o-user')
                     ->state(function (Order $record) {
-                        if ($record->user) return $record->user->name;
-
-                        $billing = $record->addresses->firstWhere('type', 'billing');
-                        return $billing?->name ?: 'Guest';
+                        // ✅ fast: use user if exists, else show Guest (avoid addresses on index)
+                        return $record->user?->name ?: 'Guest';
                     })
                     ->description(function (Order $record) {
-                        $email = $record->user?->email
-                            ?: $record->addresses->firstWhere('type', 'billing')?->email;
-
-                        return $email ?: null;
+                        return $record->user?->email ?: null;
                     })
-                    ->searchable(query: function ($query, string $search): void {
-                        $query->whereHas('user', fn ($q) => $q->where('name', 'like', "%{$search}%"))
-                            ->orWhereHas('addresses', fn ($q) =>
-                                $q->where('type', 'billing')->where('name', 'like', "%{$search}%")
-                            );
+                    ->searchable(query: function (Builder $query, string $search): void {
+                        $query->whereHas('user', fn ($q) => $q->where('name', 'like', "%{$search}%"));
                     }),
+
+                Tables\Columns\TextColumn::make('items_qty_sum')
+                    ->label('Items')
+                    ->alignCenter()
+                    ->state(fn (Order $record) => (int) ($record->items_qty_sum ?? 0))
+                    ->sortable(query: function (Builder $query, string $direction) {
+                        // withSum alias sorting (MySQL needs raw)
+                        $query->orderByRaw('COALESCE(items_qty_sum, 0) ' . ($direction === 'desc' ? 'DESC' : 'ASC'));
+                    })
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('total_amount')
                     ->label('Total')
@@ -74,11 +80,30 @@ class OrderResource extends Resource
                     ->sortable()
                     ->icon('heroicon-o-banknotes'),
 
+                // ✅ Tracking
+                Tables\Columns\TextColumn::make('shipment.tracking_number')
+                    ->label('Tracking')
+                    ->placeholder('—')
+                    ->copyable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                // ✅ Delivery attempts
+                Tables\Columns\TextColumn::make('shipment.delivery_attempts')
+                    ->label('Delivery Attempts')
+                    ->placeholder('0')
+                    ->alignCenter()
+                    ->sortable(query: function (Builder $query, string $direction) {
+                        $query->leftJoin('shipments', 'shipments.order_id', '=', 'orders.id')
+                            ->orderBy('shipments.delivery_attempts', $direction)
+                            ->select('orders.*');
+                    })
+                    ->toggleable(isToggledHiddenByDefault: true),
+
                 Tables\Columns\TextColumn::make('status')
                     ->label('Order Status')
                     ->badge()
                     ->sortable()
-                    ->color(fn (string $state) => match ($state) {
+                    ->color(fn (?string $state) => match ($state) {
                         'pending' => 'warning',
                         'processing' => 'info',
                         'shipped' => 'primary',
@@ -91,11 +116,11 @@ class OrderResource extends Resource
                     ->label('Payment')
                     ->badge()
                     ->sortable()
-                    ->color(fn (string $state) => match ($state) {
-                        'unpaid' => 'danger',
+                    ->color(fn (?string $state) => match ($state) {
+                        'pending' => 'warning',
                         'paid' => 'success',
-                        'refunded' => 'warning',
                         'failed' => 'danger',
+                        'refunded' => 'gray',
                         default => 'gray',
                     }),
 
@@ -103,7 +128,7 @@ class OrderResource extends Resource
                     ->label('Placed')
                     ->dateTime()
                     ->sortable()
-                    ->since(), // shows "2 hours ago" style text
+                    ->since(),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')->options([
@@ -113,18 +138,19 @@ class OrderResource extends Resource
                     'delivered' => 'Delivered',
                     'cancelled' => 'Cancelled',
                 ]),
+
                 Tables\Filters\SelectFilter::make('payment_status')->options([
-                    'unpaid' => 'Unpaid',
+                    'pending' => 'Pending',
                     'paid' => 'Paid',
-                    'refunded' => 'Refunded',
                     'failed' => 'Failed',
+                    'refunded' => 'Refunded',
                 ]),
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),
 
                 Tables\Actions\ActionGroup::make([
-                    // ✅ Notes
+                    // ✅ light edit notes action (doesn't require heavy relations)
                     Tables\Actions\Action::make('edit_notes')
                         ->label('Admin Notes')
                         ->icon('heroicon-o-pencil-square')
@@ -139,143 +165,13 @@ class OrderResource extends Resource
                         ->action(fn (Order $record, array $data) => $record->update([
                             'admin_notes' => $data['admin_notes'] ?? null,
                         ])),
-
-                    // ✅ Order status actions
-                    self::orderStatusAction('mark_processing', 'Mark Processing', 'processing', ['pending'], 'info'),
-                    self::orderStatusAction('mark_shipped', 'Mark Shipped', 'shipped', ['processing'], 'primary'),
-                    self::orderStatusAction('mark_delivered', 'Mark Delivered', 'delivered', ['shipped'], 'success'),
-
-                    Tables\Actions\Action::make('cancel_order')
-                        ->label('Cancel Order')
-                        ->icon('heroicon-o-x-circle')
-                        ->color('danger')
-                        ->requiresConfirmation()
-                        ->modalHeading('Cancel this order?')
-                        ->modalDescription('This will record a timeline entry and notify the customer by email (if possible).')
-                        ->form([
-                            Forms\Components\Textarea::make('note')->label('Optional note')->rows(3),
-                        ])
-                        ->visible(fn (Order $record) => in_array($record->status, ['pending', 'processing'], true))
-                        ->action(fn (Order $record, array $data) =>
-                            self::updateOrderStatusAndNotify($record, 'cancelled', $data['note'] ?? null)
-                        ),
-
-                    // ✅ Payment status actions (confirm + note + disabled when cancelled)
-                    self::paymentAction('mark_paid', 'Mark Paid', 'paid', 'success'),
-                    self::paymentAction('mark_unpaid', 'Mark Unpaid', 'unpaid', 'warning'),
-                    self::paymentAction('mark_refunded', 'Mark Refunded', 'refunded', 'gray'),
                 ])
                     ->label('More')
                     ->icon('heroicon-o-ellipsis-vertical'),
             ])
-            ->defaultSort('created_at', 'desc');
-    }
-
-    private static function orderStatusAction(
-        string $name,
-        string $label,
-        string $toStatus,
-        array $allowedFrom,
-        string $color = 'primary'
-    ) {
-        return Tables\Actions\Action::make($name)
-            ->label($label)
-            ->color($color)
-            ->icon('heroicon-o-arrow-right-circle')
-            ->requiresConfirmation()
-            ->modalHeading($label . '?')
-            ->modalDescription('This will record a timeline entry and notify the customer by email (if possible).')
-            ->form([
-                Forms\Components\Textarea::make('note')->label('Optional note')->rows(3),
-            ])
-            ->visible(fn (Order $record) => in_array($record->status, $allowedFrom, true))
-            ->action(fn (Order $record, array $data) =>
-                self::updateOrderStatusAndNotify($record, $toStatus, $data['note'] ?? null)
-            );
-    }
-
-    private static function paymentAction(string $name, string $label, string $toStatus, string $color)
-    {
-        return Tables\Actions\Action::make($name)
-            ->label($label)
-            ->icon('heroicon-o-banknotes')
-            ->color($color)
-            ->requiresConfirmation()
-            ->modalHeading($label . '?')
-            ->modalDescription('This will record a timeline entry and notify the customer by email (if possible).')
-            ->form([
-                Forms\Components\Textarea::make('note')->label('Optional note')->rows(3),
-            ])
-            ->visible(fn (Order $record) =>
-                $record->payment_status !== $toStatus && $record->status !== 'cancelled'
-            )
-            ->action(fn (Order $record, array $data) =>
-                self::updatePaymentStatusAndNotify($record, $toStatus, $data['note'] ?? null)
-            );
-    }
-
-    // private static function updateOrderStatusAndNotify(Order $order, string $newStatus, ?string $note = null): void
-    public static function updateOrderStatusAndNotify(Order $order, string $newStatus, ?string $note = null): void
-    {
-        $old = $order->status;
-        if ($old === $newStatus) return;
-
-        $order->update(['status' => $newStatus]);
-
-        OrderStatusHistory::create([
-            'order_id' => $order->id,
-            'type' => 'order_status',
-            'from_status' => $old,
-            'to_status' => $newStatus,
-            'changed_by' => auth()->id(),
-            'note' => $note,
-        ]);
-
-        self::sendOrderUpdateEmail($order, 'order_status', $old, $newStatus, $note);
-    }
-
-    // private static function updatePaymentStatusAndNotify(Order $order, string $newStatus, ?string $note = null): void
-    public static function updatePaymentStatusAndNotify(Order $order, string $newStatus, ?string $note = null): void
-    {
-        $old = $order->payment_status;
-        if ($old === $newStatus) return;
-
-        $order->update(['payment_status' => $newStatus]);
-
-        OrderStatusHistory::create([
-            'order_id' => $order->id,
-            'type' => 'payment_status',
-            'from_status' => $old,
-            'to_status' => $newStatus,
-            'changed_by' => auth()->id(),
-            'note' => $note,
-        ]);
-
-        self::sendOrderUpdateEmail($order, 'payment_status', $old, $newStatus, $note);
-    }
-
-    private static function sendOrderUpdateEmail(Order $order, string $type, ?string $old, string $new, ?string $note): void
-    {
-        $email = $order->user?->email;
-
-        if (! $email) {
-            $billing = $order->addresses->firstWhere('type', 'billing');
-            $email = $billing?->email;
-        }
-
-        if (! $email) return;
-
-        try {
-            Mail::to($email)->send(new OrderUpdateMail($order, $type, $old, $new, $note));
-        } catch (\Throwable $e) {
-            report($e);
-
-            Notification::make()
-                ->title('Email failed to send')
-                ->body($e->getMessage())
-                ->danger()
-                ->send();
-        }
+            ->defaultSort('created_at', 'desc')
+            ->paginated([25, 50, 100])
+            ->defaultPaginationPageOption(25);
     }
 
     public static function canCreate(): bool

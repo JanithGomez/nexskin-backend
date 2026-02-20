@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\OrderEventService;
 use App\Models\Address;
 use App\Models\Cart;
 use App\Models\Order;
@@ -113,13 +114,16 @@ class CheckoutController extends Controller
                 'payment_status' => 'pending',
             ]);
             
-            Payment::create([
-                'order_id' => $order->id,
-                'payment_method' => $data['payment_method'], // 'cod'
+            // ✅ Payment row for COD
+            $order->payment()->create([
+                'payment_method' => 'cod',
                 'payment_reference' => null,
-                'amount' => (float) $order->total_amount,
+                'amount' => $order->total_amount ?? 0,
                 'status' => 'pending',
             ]);
+
+            // ✅ optional: timeline + email "Order placed"
+            OrderEventService::orderPlaced($order, notifyCustomer: true);
 
             // order items
             foreach ($cart->items as $ci) {

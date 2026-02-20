@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\AddressController;
 use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\MenuController;
 use App\Http\Controllers\Api\CheckoutController;
+use App\Http\Controllers\Api\AccountOrdersController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -37,6 +38,11 @@ Route::middleware('auth:sanctum')->prefix('saved-addresses')->group(function () 
     Route::get('/', [AddressController::class, 'index']);
     Route::post('/', [AddressController::class, 'store']);
     Route::delete('/{id}', [AddressController::class, 'destroy']);
+});
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/my/orders', [AccountOrdersController::class, 'index']);
+    Route::get('/my/orders/{order}', [AccountOrdersController::class, 'show']);
 });
 
 /* =========================

@@ -23,8 +23,25 @@ class OrderUpdateMail extends Mailable
             default           => 'Order status',
         };
 
+        $new = strtolower($this->newValue);
+
+        $subject = match (true) {
+            $this->type === 'order_status' && $new === 'placed'
+                => "We received your order {$this->order->order_number}",
+            $this->type === 'order_status' && $new === 'processing'
+                => "Your order is being prepared ({$this->order->order_number})",
+            $this->type === 'order_status' && $new === 'shipped'
+                => "Your order has been shipped ({$this->order->order_number})",
+            $this->type === 'order_status' && $new === 'delivered'
+                => "Delivered: {$this->order->order_number}",
+            $this->type === 'shipment_status' && $new === 'delivery_failed'
+                => "Delivery attempt failed ({$this->order->order_number})",
+            default
+                => "{$label} updated for {$this->order->order_number}",
+        };
+
         return $this
-            ->subject("{$label} updated for {$this->order->order_number}")
+            ->subject($subject)
             ->view('emails.order-update')
             ->with([
                 'order' => $this->order,
@@ -35,4 +52,5 @@ class OrderUpdateMail extends Mailable
                 'label' => $label,
             ]);
     }
+
 }

@@ -15,6 +15,7 @@ class Shipment extends Model
         'carrier',
         'status',
         'shipped_at',
+        'delivery_attempts',
     ];
 
     public function order()
