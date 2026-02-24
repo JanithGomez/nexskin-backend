@@ -55,7 +55,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
-                EnsureFilamentAdminAccess::class, // ✅ role check here
+                // EnsureFilamentAdminAccess::class, // ✅ role check here
             ]);
     }
 }
