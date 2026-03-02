@@ -80,24 +80,4 @@ class Product extends Model
         });
     }
 
-    // public function getPrimaryThumbUrlAttribute(): ?string
-    // {
-    //     $publicId = optional($this->primaryImage)->image_url;
-
-    //     if (! $publicId) {
-    //         return null;
-    //     }
-
-    //     // ✅ small thumbnail (fast)
-    //     // width/height 90, crop fill, auto format, auto quality
-    //     return Cloudinary::getUrl($publicId, [
-    //         'width' => 90,
-    //         'height' => 90,
-    //         'crop' => 'fill',
-    //         'quality' => 'auto:eco',
-    //         'fetch_format' => 'auto',
-    //         'secure' => true,
-    //     ]);
-    // }
-
 }
