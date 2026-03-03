@@ -32,9 +32,9 @@ class PaymentResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('order.order_number'),
-                TextColumn::make('method'),
+                TextColumn::make('payment_method'),
                 TextColumn::make('status')->badge(),
-                TextColumn::make('amount')->money('USD'),
+                TextColumn::make('amount')->money('LKR'),
                 TextColumn::make('transaction_id'),
             ])
             ->filters([

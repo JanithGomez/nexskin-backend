@@ -1,32 +1,85 @@
 <?php
 
+// namespace App\Filament\Pages;
+
+// use Filament\Pages\Dashboard as BaseDashboard;
+
+// class Dashboard extends BaseDashboard
+// {
+//     public function getColumns(): int|array
+//     {
+//         return 12;
+//     }
+
+//     public function getWidgets(): array
+//     {
+
+//         return [
+//             \App\Filament\Widgets\Admin\KpiStatsOverview::class,
+
+//             \App\Filament\Widgets\Admin\RevenueTrendChart::class,
+//             \App\Filament\Widgets\Admin\OrdersTrendChart::class,
+
+//             \App\Filament\Widgets\Admin\OrdersNeedingAttentionTable::class,
+//             \App\Filament\Widgets\Admin\LowStockProductsTable::class,
+
+//             \App\Filament\Widgets\Admin\PendingReviewsTable::class,
+//             \App\Filament\Widgets\Admin\RecentStatusChangesTable::class,
+//         ];
+//     }
+// }
+
+
 namespace App\Filament\Pages;
 
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Form;
 use Filament\Pages\Dashboard as BaseDashboard;
+use Filament\Pages\Dashboard\Concerns\HasFiltersForm;
 
 class Dashboard extends BaseDashboard
 {
-    protected static ?string $navigationIcon = 'heroicon-o-home';
-    protected static ?string $navigationLabel = 'Dashboard';
-    protected static ?string $title = 'Admin Dashboard';
+    use HasFiltersForm;
+
+    public function getColumns(): int|array
+    {
+        return 12;
+    }
+
+    public function filtersForm(Form $form): Form
+    {
+        return $form->schema([
+            Section::make('Filters')
+                ->schema([
+                    Select::make('range')
+                        ->label('Date range')
+                        ->options([
+                            7 => 'Last 7 days',
+                            30 => 'Last 30 days',
+                            90 => 'Last 90 days',
+                        ])
+                        ->default(30)
+                        ->selectablePlaceholder(false),
+                ])
+                ->columns(3)
+                ->collapsed(),
+        ]);
+    }
 
     public function getWidgets(): array
     {
         return [
-            // \App\Filament\Widgets\StatsOverview::class,
-             \App\Filament\Widgets\EcomStatsOverview::class,
-              \App\Filament\Widgets\LowStockProductsTable::class,
-            \App\Filament\Widgets\RevenueChart::class,
-            //  \App\Filament\Widgets\TopProductsSoldTable::class,
-            \App\Filament\Widgets\PaymentStatusChart::class,
-            \App\Filament\Widgets\SalesLast14DaysChart::class,
-            \App\Filament\Widgets\LatestOrdersTable::class,
-        ];
-    }
+            \App\Filament\Widgets\Admin\KpiStatsOverview::class,
 
-    public function getColumns(): int|string|array
-    {
-        // Controls widget grid columns (e.g. 1, 2, 3, 4, etc.)
-        return 3;
+            \App\Filament\Widgets\Admin\RevenueTrendChart::class,
+            \App\Filament\Widgets\Admin\OrdersTrendChart::class,
+
+            \App\Filament\Widgets\Admin\OrdersNeedingAttentionTable::class,
+            \App\Filament\Widgets\Admin\LowStockProductsTable::class,
+
+            \App\Filament\Widgets\Admin\PendingReviewsTable::class,
+            \App\Filament\Widgets\Admin\RecentStatusChangesTable::class,
+        ];
     }
 }
