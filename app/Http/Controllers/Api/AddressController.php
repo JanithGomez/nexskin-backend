@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\SavedAddress;
+use App\Support\EmailHelper;
 use Illuminate\Http\Request;
 
 class AddressController extends Controller
@@ -19,20 +20,29 @@ class AddressController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'type' => 'required|in:billing,shipping',
-            'name' => 'required|string|max:255',
-            'email' => 'nullable|email|max:255',
-            'phone' => 'nullable|string|max:30',
-            'address_line' => 'required|string|max:255',
-            'city' => 'required|string|max:255',
-            'state' => 'nullable|string|max:255',
-            'postal_code' => 'required|string|max:20',
-            'country' => 'required|string|max:100',
-            'is_default' => 'nullable|boolean',
+            'type' => ['required', 'in:billing,shipping'],
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['nullable', 'email:rfc,dns', 'indisposable', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'address_line' => ['required', 'string', 'max:255'],
+            'city' => ['required', 'string', 'max:255'],
+            'state' => ['nullable', 'string', 'max:255'],
+            'postal_code' => ['required', 'string', 'max:20'],
+            'country' => ['required', 'string', 'max:100'],
+            'is_default' => ['nullable', 'boolean'],
         ]);
 
-        // if setting as default, unset other defaults for same type
-        if (!empty($data['is_default'])) {
+        $emailSuggestion = EmailHelper::suggest($data['email'] ?? null);
+
+        if ($emailSuggestion) {
+            return response()->json([
+                'message' => 'Please confirm your email address.',
+                'field' => 'email',
+                'email_suggestion' => $emailSuggestion,
+            ], 422);
+        }
+
+        if (! empty($data['is_default'])) {
             SavedAddress::where('user_id', $request->user()->id)
                 ->where('type', $data['type'])
                 ->update(['is_default' => false]);
@@ -49,7 +59,7 @@ class AddressController extends Controller
             'state' => $data['state'] ?? null,
             'postal_code' => $data['postal_code'],
             'country' => $data['country'],
-            'is_default' => (bool)($data['is_default'] ?? false),
+            'is_default' => (bool) ($data['is_default'] ?? false),
         ]);
 
         return response()->json($saved, 201);
@@ -62,19 +72,29 @@ class AddressController extends Controller
             ->firstOrFail();
 
         $data = $request->validate([
-            'type' => 'required|in:billing,shipping',
-            'name' => 'required|string|max:255',
-            'email' => 'nullable|email|max:255',
-            'phone' => 'nullable|string|max:30',
-            'address_line' => 'required|string|max:255',
-            'city' => 'required|string|max:255',
-            'state' => 'nullable|string|max:255',
-            'postal_code' => 'required|string|max:20',
-            'country' => 'required|string|max:100',
-            'is_default' => 'nullable|boolean',
+            'type' => ['required', 'in:billing,shipping'],
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['nullable', 'email:rfc,dns', 'indisposable', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'address_line' => ['required', 'string', 'max:255'],
+            'city' => ['required', 'string', 'max:255'],
+            'state' => ['nullable', 'string', 'max:255'],
+            'postal_code' => ['required', 'string', 'max:20'],
+            'country' => ['required', 'string', 'max:100'],
+            'is_default' => ['nullable', 'boolean'],
         ]);
 
-        if (!empty($data['is_default'])) {
+        $emailSuggestion = EmailHelper::suggest($data['email'] ?? null);
+
+        if ($emailSuggestion) {
+            return response()->json([
+                'message' => 'Please confirm your email address.',
+                'field' => 'email',
+                'email_suggestion' => $emailSuggestion,
+            ], 422);
+        }
+
+        if (! empty($data['is_default'])) {
             SavedAddress::where('user_id', $request->user()->id)
                 ->where('type', $data['type'])
                 ->where('id', '!=', $addr->id)
@@ -91,7 +111,7 @@ class AddressController extends Controller
             'state' => $data['state'] ?? null,
             'postal_code' => $data['postal_code'],
             'country' => $data['country'],
-            'is_default' => (bool)($data['is_default'] ?? false),
+            'is_default' => (bool) ($data['is_default'] ?? false),
         ]);
 
         return response()->json($addr);

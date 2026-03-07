@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Review;
+use App\Support\EmailHelper;
 use CloudinaryLabs\CloudinaryLaravel\Facades\Cloudinary;
 use Illuminate\Http\Request;
 
@@ -17,15 +18,24 @@ class ReviewController extends Controller
             'review_title' => ['nullable', 'string', 'max:140'],
             'comment' => ['nullable', 'string', 'max:2000'],
             'guest_name' => ['nullable', 'string', 'max:100'],
-            'guest_email' => ['nullable', 'email', 'max:150'],
+            'guest_email' => ['nullable', 'email:rfc,dns', 'indisposable', 'max:150'],
             'is_anonymous' => ['nullable', 'boolean'],
 
-            // media files
             'media' => ['nullable', 'array', 'max:5'],
-            'media.*' => ['file', 'mimes:jpg,jpeg,png,webp,mp4,mov', 'max:10240'], // 10MB each
+            'media.*' => ['file', 'mimes:jpg,jpeg,png,webp,mp4,mov', 'max:10240'],
         ]);
 
-        $user = $request->user(); // null for guests
+        $emailSuggestion = EmailHelper::suggest($validated['guest_email'] ?? null);
+
+        if ($emailSuggestion) {
+            return response()->json([
+                'message' => 'Please confirm your email address.',
+                'field' => 'guest_email',
+                'email_suggestion' => $emailSuggestion,
+            ], 422);
+        }
+
+        $user = $request->user();
         $isAnonymous = (bool) ($validated['is_anonymous'] ?? false);
 
         if (! $user && ! $isAnonymous && empty($validated['guest_name'])) {
@@ -34,14 +44,15 @@ class ReviewController extends Controller
             ], 422);
         }
 
-        // upload media to Cloudinary (optional)
         $mediaUrls = [];
+
         if ($request->hasFile('media')) {
             foreach ($request->file('media') as $file) {
                 $uploaded = Cloudinary::upload($file->getRealPath(), [
                     'folder' => 'reviews',
-                    'resource_type' => 'auto', // supports images/videos
+                    'resource_type' => 'auto',
                 ]);
+
                 $mediaUrls[] = $uploaded->getSecurePath();
             }
         }

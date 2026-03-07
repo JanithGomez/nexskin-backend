@@ -6,8 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Product;
+use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class CartController extends Controller
 {
@@ -18,15 +19,32 @@ class CartController extends Controller
         }
 
         $request->session()->start();
+
         return $request->session()->getId();
+    }
+
+    private function getApiUserFromBearerToken(Request $request): ?User
+    {
+        $token = $request->bearerToken();
+
+        if (! $token) {
+            return null;
+        }
+
+        $accessToken = PersonalAccessToken::findToken($token);
+
+        if (! $accessToken) {
+            return null;
+        }
+
+        $tokenable = $accessToken->tokenable;
+
+        return $tokenable instanceof User ? $tokenable : null;
     }
 
     private function getOrCreateCart(Request $request): Cart
     {
-        // $userId = Auth::guard('sanctum')->id() ?? Auth::id();
-        // $userId = $request->user()?->id; // ✅ token user (Bearer)
-        $userId = $request->user('sanctum')?->id;
-
+        $userId = $this->getApiUserFromBearerToken($request)?->id;
         $sessionId = $this->getSessionId($request);
 
         $sessionCart = Cart::firstOrCreate(
@@ -66,6 +84,7 @@ class CartController extends Controller
                     }
                 }
 
+                $sessionCart->items()->delete();
                 $sessionCart->delete();
             }
 
@@ -80,7 +99,7 @@ class CartController extends Controller
         $cart->load(['items.product.primaryImage', 'items.product.images']);
 
         $items = $cart->items
-            ->filter(fn ($ci) => $ci->product) // ✅ avoid null product
+            ->filter(fn ($ci) => $ci->product)
             ->map(function ($ci) {
                 $p = $ci->product;
 
@@ -103,7 +122,10 @@ class CartController extends Controller
             ->values()
             ->all();
 
-        $subtotal = collect($items)->reduce(fn ($sum, $i) => $sum + ($i['price'] * $i['quantity']), 0);
+        $subtotal = collect($items)->reduce(
+            fn ($sum, $i) => $sum + ($i['price'] * $i['quantity']),
+            0
+        );
 
         return response()->json([
             'items' => $items,
