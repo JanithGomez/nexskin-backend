@@ -53,6 +53,6 @@ class LowStockProductsTable extends TableWidget
                     ->openUrlInNewTab(),
             ])
             ->paginated([5, 10, 25])
-            ->defaultPaginationPageOption(10);
+            ->defaultPaginationPageOption(5);
     }
 }
