@@ -19,7 +19,6 @@ use App\Observers\SkinTypeObserver;
 use App\Observers\TargetGroupObserver;
 use App\Observers\ReviewObserver;
 
-
 class AppServiceProvider extends ServiceProvider
 {
     /**
@@ -34,7 +33,7 @@ class AppServiceProvider extends ServiceProvider
      * Bootstrap any application services.
      */
     public function boot(): void
-{
+    {
         Category::observe(CategoryObserver::class);
 
         Product::observe(ProductObserver::class);
