@@ -41,9 +41,10 @@ class CreateOrder extends CreateRecord
 
             'shipping_fee'=>$shipping,
 
-            'status'=>'processing',
+            'status'=>'pending',
 
-            'payment_status'=>'pending',
+            // 'payment_status' => $data['payment_method'] === 'bank_transfer' ? 'paid' : 'pending',
+            'payment_status' => 'pending',
 
             'customer_notes'=>$data['customer_notes'] ?? null,
 
@@ -51,10 +52,16 @@ class CreateOrder extends CreateRecord
 
         ]);
 
+        // $paymentStatus = $data['payment_method'] === 'bank_transfer'
+        //     ? 'paid'
+        //     : 'pending';
+        $paymentStatus = 'pending';
+
         $order->payment()->create([
-            'payment_method'=>$data['payment_method'],
-            'amount'=>$total,
-            'status'=>'pending',
+            'payment_method'     => $data['payment_method'],
+            'payment_reference'  => $data['payment_reference'] ?? null,
+            'amount'             => $total,
+            'status'             => $paymentStatus,
         ]);
 
         foreach($items as $item){

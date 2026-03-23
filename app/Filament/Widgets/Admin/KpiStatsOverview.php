@@ -13,6 +13,11 @@ class KpiStatsOverview extends BaseWidget
     use InteractsWithPageFilters;
 
     protected static ?int $sort = 1;
+        
+    protected int|string|array $columnSpan = [
+    'default' => 1,
+    'xl' => 12,
+    ];
 
     protected function getStats(): array
     {

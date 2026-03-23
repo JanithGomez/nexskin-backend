@@ -13,7 +13,11 @@ class PendingReviewsTable extends TableWidget
     protected static ?string $heading = 'Reviews awaiting approval';
     protected static ?int $sort = 5;
 
-    protected int|string|array $columnSpan = 6;
+    protected int|string|array $columnSpan = [
+    'default' => 1,
+    'md' => 2,
+    'xl' => 6,
+    ];
 
     private const REVIEW_TITLE_FIELD = 'review_title';
 

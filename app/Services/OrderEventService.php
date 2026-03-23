@@ -142,6 +142,20 @@ class OrderEventService
             'note' => $internalNote,
         ]);
 
+        if (
+            $newStatus === 'paid' &&
+            $order->status === 'pending' &&
+            $payment?->payment_method === 'bank_transfer'
+        ) {
+            self::orderStatus(
+                order: $order,
+                newStatus: 'processing',
+                internalNote: 'Auto: Payment approved (bank transfer)',
+                notifyCustomer: false,
+                noteForEmail: null
+            );
+        }
+
         if ($notifyCustomer) {
             self::sendMail($order, 'payment_status', $old, $newStatus, $noteForEmail);
         }

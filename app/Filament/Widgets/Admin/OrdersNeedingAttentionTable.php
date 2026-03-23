@@ -17,7 +17,11 @@ class OrdersNeedingAttentionTable extends TableWidget
     protected static ?string $heading = 'Orders needing attention';
     protected static ?int $sort = 4;
 
-    protected int|string|array $columnSpan = 6;
+    protected int|string|array $columnSpan = [
+    'default' => 1,
+    'md' => 2,
+    'xl' => 6,
+    ];
 
     public function table(Table $table): Table
     {

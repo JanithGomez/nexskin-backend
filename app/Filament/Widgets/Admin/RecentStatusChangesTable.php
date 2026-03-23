@@ -13,7 +13,11 @@ class RecentStatusChangesTable extends TableWidget
     protected static ?string $heading = 'Recent activity';
     protected static ?int $sort = 6;
 
-    protected int|string|array $columnSpan = 6;
+    protected int|string|array $columnSpan = [
+    'default' => 1,
+    'md' => 2,
+    'xl' => 6,
+    ];
 
     public function table(Table $table): Table
     {

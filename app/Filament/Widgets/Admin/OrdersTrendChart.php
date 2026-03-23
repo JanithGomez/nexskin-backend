@@ -12,7 +12,11 @@ class OrdersTrendChart extends ChartWidget
 
     protected static ?int $sort = 3;
 
-    protected int|string|array $columnSpan = 'full';
+    protected int|string|array $columnSpan = [
+    'default' => 1,
+    'md' => 2,
+    'xl' => 6,
+    ];
 
     public function getHeading(): string
     {

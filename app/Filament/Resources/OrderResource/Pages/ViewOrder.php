@@ -18,6 +18,7 @@ use Filament\Infolists\Components\Tabs\Tab;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Infolist;
 use Filament\Resources\Pages\ViewRecord;
+use CloudinaryLabs\CloudinaryLaravel\Facades\Cloudinary;
 
 class ViewOrder extends ViewRecord
 {
@@ -272,6 +273,124 @@ class ViewOrder extends ViewRecord
             ])
                 ->label('Fulfillment')
                 ->icon('heroicon-o-clipboard-document-check'),
+
+Actions\Action::make('review_payment')
+    ->label('Review Bank Payment')
+    ->icon('heroicon-o-eye')
+    ->color('warning')
+    ->visible(function () {
+        $payment = $this->record->payment;
+
+        return $payment
+            && $payment->payment_method === 'bank_transfer'
+            && in_array($payment->status, ['pending', 'paid']); // ✅ safer
+    })
+    ->modalHeading('Review Bank Transfer')
+    ->modalWidth('lg') // ✅ better UI width
+    ->modalSubmitAction(false)
+    ->modalCancelActionLabel('Close')
+
+    ->modalContent(function () {
+
+        $ref = $this->record->payment?->payment_reference;
+
+        if (!$ref) {
+            return new \Illuminate\Support\HtmlString("
+                <div style='padding:20px;text-align:center;color:#999'>
+                    No payment slip uploaded
+                </div>
+            ");
+        }
+
+        $url = \CloudinaryLabs\CloudinaryLaravel\Facades\Cloudinary::getUrl($ref);
+
+        return new \Illuminate\Support\HtmlString("
+            <div style='text-align:center'>
+                <a href='{$url}' target='_blank'>
+                    <img src='{$url}'
+                        style='
+                            max-width:100%;
+                            border-radius:12px;
+                            cursor:pointer;
+                            transition:0.2s;
+                        '
+                        onmouseover='this.style.transform=\"scale(1.03)\"'
+                        onmouseout='this.style.transform=\"scale(1)\"'
+                    >
+                </a>
+
+                <div style='margin-top:10px;font-size:12px;color:#888'>
+                    Click image to open full size
+                </div>
+            </div>
+        ");
+    })
+
+    ->extraModalFooterActions([
+
+        /*
+        ✅ APPROVE
+        */
+        Actions\Action::make('approve_payment')
+            ->label('Approve Payment')
+            ->icon('heroicon-o-check-circle')
+            ->color('success')
+            ->requiresConfirmation()
+            ->modalHeading('Approve this payment?')
+            ->modalDescription('This will mark payment as PAID and notify the customer.')
+            ->action(function () {
+
+                \App\Services\OrderEventService::paymentStatus(
+                    order: $this->record,
+                    newStatus: 'paid',
+                    internalNote: 'Bank transfer approved',
+                    notifyCustomer: true,
+                    noteForEmail: 'Your payment has been successfully verified.'
+                );
+
+                \Filament\Notifications\Notification::make()
+                    ->title('Payment Approved')
+                    ->success()
+                    ->send();
+
+                $this->record->refresh();
+            }),
+
+        /*
+        ❌ REJECT
+        */
+        Actions\Action::make('reject_payment')
+            ->label('Reject Payment')
+            ->icon('heroicon-o-x-circle')
+            ->color('danger')
+            ->form([
+                Forms\Components\Textarea::make('reason')
+                    ->label('Reason for rejection')
+                    ->rows(3)
+                    ->placeholder('Optional message to customer...')
+            ])
+            ->requiresConfirmation()
+            ->modalHeading('Reject this payment?')
+            ->modalDescription('This will mark payment as FAILED and notify the customer.')
+            ->action(function ($data) {
+
+                \App\Services\OrderEventService::paymentStatus(
+                    order: $this->record,
+                    newStatus: 'failed',
+                    internalNote: $data['reason'] ?? 'Bank transfer rejected',
+                    notifyCustomer: true,
+                    noteForEmail: $data['reason'] ?? 'Your payment could not be verified.'
+                );
+
+                \Filament\Notifications\Notification::make()
+                    ->title('Payment Rejected')
+                    ->danger()
+                    ->send();
+
+                $this->record->refresh();
+            }),
+
+    ]),
         ];
     }
 
@@ -349,6 +468,34 @@ class ViewOrder extends ViewRecord
                                                         'failed' => 'danger',
                                                         default => 'gray',
                                                     }),
+                                                \Filament\Infolists\Components\ImageEntry::make('payment_slip')
+                                                    ->label('Bank Slip')
+                                                    ->getStateUsing(function ($record) {
+
+                                                        $ref = $record->payment?->payment_reference;
+
+                                                        if (!$ref) return null;
+
+                                                        return \CloudinaryLabs\CloudinaryLaravel\Facades\Cloudinary::getUrl($ref);
+                                                    })
+                                                    ->visible(fn ($record) => filled($record->payment?->payment_reference)) // ✅ HIDE IF EMPTY
+                                                    ->height(180)
+                                                    ->extraImgAttributes([
+                                                        'style' => '
+                                                            border-radius:12px;
+                                                            object-fit:cover;
+                                                            cursor:pointer;
+                                                            transition:0.2s;
+                                                        ',
+                                                        'onmouseover' => 'this.style.transform="scale(1.05)"',
+                                                        'onmouseout' => 'this.style.transform="scale(1)"',
+                                                    ])
+                                                    ->url(fn ($record) =>
+                                                        $record->payment?->payment_reference
+                                                            ? \CloudinaryLabs\CloudinaryLaravel\Facades\Cloudinary::getUrl($record->payment->payment_reference)
+                                                            : null,
+                                                        shouldOpenInNewTab: true
+                                                    ),
                                             ]),
 
                                             TextEntry::make('total_amount')

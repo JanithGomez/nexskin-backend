@@ -13,7 +13,11 @@ class LowStockProductsTable extends TableWidget
     protected static ?string $heading = 'Low stock products';
     protected static ?int $sort = 4;
 
-    protected int|string|array $columnSpan = 6;
+    protected int|string|array $columnSpan = [
+    'default' => 1,
+    'md' => 2,
+    'xl' => 6,
+    ];
 
     public function table(Table $table): Table
     {

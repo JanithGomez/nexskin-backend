@@ -175,11 +175,26 @@ class OrderResource extends Resource
 
                             Forms\Components\Select::make('payment_method')
                                 ->options([
-                                    'cod'=>'Cash on Delivery'
+                                    'cod'=>'Cash on Delivery',
+                                    'bank_transfer' => 'Bank Transfer',
                                 ])
-                                ->required()
-
+                                ->reactive()
+                                ->required(),
                         ]),
+
+                            Forms\Components\FileUpload::make('payment_reference')
+                                ->label('Bank Slip')
+                                ->image()
+                                ->disk('cloudinary') // or 'public' if local
+                                ->directory('payments')
+                                ->visibility('public')
+                                ->imagePreviewHeight('150')
+                                ->openable()
+                                ->downloadable()
+                                ->visible(fn ($get) => $get('payment_method') === 'bank_transfer')
+                                ->required(fn ($get) => $get('payment_method') === 'bank_transfer')
+                                ->maxSize(2048) // 2MB
+                                ->helperText('Upload bank payment slip (screenshot or photo)'),
 
                     Forms\Components\Section::make('Notes')
                         ->schema([
